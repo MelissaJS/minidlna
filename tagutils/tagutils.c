@@ -108,7 +108,7 @@ char *winamp_genre[] = {
 #include "tagutils-aac.h"
 #include "tagutils-ogg.h"
 #ifdef HAVE_OPUS
-#include "tagutils-opus.h"
+#include "tagutils-ops.h"
 #endif
 #include "tagutils-flc.h"
 #include "tagutils-asf.h"
@@ -151,7 +151,7 @@ static taghandler taghandlers[] = {
 #include "tagutils-aac.c"
 #include "tagutils-ogg.c"
 #ifdef HAVE_OPUS
-#include "tagutils-opus.c"
+#include "tagutils-ops.c"
 #endif
 #include "tagutils-flc.c"
 #include "tagutils-asf.c"
