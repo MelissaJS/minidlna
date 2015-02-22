@@ -31,7 +31,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <ctype.h>
+
+/* phg.h brings in setjmp.h; you can't include both */
+#ifdef HAVE_LIBPNG
+#include <png.h>
+#else
 #include <setjmp.h>
+#endif
+
 #include <jpeglib.h>
 #ifdef HAVE_MACHINE_ENDIAN_H
 #include <machine/endian.h>
@@ -67,6 +75,9 @@ struct my_dst_mgr {
 	size_t sz;
 	size_t used;
 };
+
+static int32_t _png_bgcolor1 = DEFAULT_BGCOLOR1,
+			   _png_bgcolor2 = DEFAULT_BGCOLOR2;
 
 /* Destination manager to store data in a buffer */
 static void
@@ -525,6 +536,7 @@ image_new_from_jpeg(const char *path, int is_file, const uint8_t *buf, int size,
 	}
 	else if(cinfo.output_components == 1)
 	{
+		int rx, ry;
 		ofs = 0;
 		for(i = 0; i < cinfo.rec_outbuf_height; i++)
 		{
@@ -542,12 +554,19 @@ image_new_from_jpeg(const char *path, int is_file, const uint8_t *buf, int size,
 		}
 		for(y = 0; y < h; y += cinfo.rec_outbuf_height)
 		{
+			ry = (rotate & (ROTATE_90|ROTATE_180)) ? (y - h + 1) * -1 : y;
 			jpeg_read_scanlines(&cinfo, line, cinfo.rec_outbuf_height);
 			for(i = 0; i < cinfo.rec_outbuf_height; i++)
 			{
 				for(x = 0; x < w; x++)
 				{
-					vimage->buf[ofs++] = COL(line[i][x], line[i][x], line[i][x]);
+					rx = (rotate & (ROTATE_180|ROTATE_270)) ?
+						(x - w + 1) * -1 : x;
+					ofs = (rotate & (ROTATE_90|ROTATE_270)) ?
+						ry + (rx * h) : rx + (ry * w);
+					if( ofs < maxbuf )
+						vimage->buf[ofs] =
+							COL(line[i][x], line[i][x], line[i][x]);
 				}
 			}
 		}
@@ -562,6 +581,462 @@ image_new_from_jpeg(const char *path, int is_file, const uint8_t *buf, int size,
 		fclose(file);
 
 	return vimage;
+}
+
+#ifdef HAVE_LIBPNG
+
+int
+image_color_from_hex (const char *s, uint32_t *color)
+{
+    const char *hexdigits = "0123456789abcdef", *p, *hdp;
+    int j, l = strlen (s);
+
+    if ((l != 6) && (l != 8))
+    {
+		DPRINTF (E_WARN, L_GENERAL,
+			"image_color_from_hex():  Illegal number of bytes (only three or four (RGB or RGBA) may be specified).\n");
+		return -1;
+    }
+
+    *color = 0;
+    p = s;
+    for (j = l - 1; j >= 0; j--)
+    {
+		if ((hdp = strchr (hexdigits, tolower (*p++))) == (char *)NULL)
+		{
+			DPRINTF (E_WARN, L_GENERAL,
+				"image_bgcolor_from_hex(): Illegal character.\n");
+			return -1;
+		}
+		*color |= (hdp - hexdigits) << (j << 2);
+    }
+    if (l == 6)
+	*color = (*color << 8) | 0xff;
+    return 0;
+}
+
+int
+image_set_png_bgcolor (const char *color1, const char *color2)
+{
+	uint32_t bgcolor;
+
+	if (image_color_from_hex (color1, &bgcolor))
+		return -1;
+	else
+		_png_bgcolor1 = (int32_t)(bgcolor >> 8);
+
+	if (color2 != (char *)NULL)
+	{
+		if (image_color_from_hex (color2, &bgcolor))
+			_png_bgcolor2 = -1;
+		else
+			_png_bgcolor2 = (int32_t)(bgcolor >> 8);
+	}
+	else
+		_png_bgcolor2 = -1;
+
+	return 0;
+}
+
+void
+image_png_composite (image_s *img)
+{
+	image_bgcolor_composite (img, _png_bgcolor1, _png_bgcolor2);
+}
+
+static void
+_png_read_data (png_structp png_ptr, png_bytep data, png_size_t length)
+{
+	struct _iu_png_io_struct *iu_png_io = png_get_io_ptr (png_ptr);
+	if (iu_png_io->fp)
+	{
+		if ((fread (data, 1, length, iu_png_io->fp)) < length)
+		{
+			if (ferror (iu_png_io->fp))
+				png_error (png_ptr, "file read error");
+		}
+	}
+	else
+	{
+		size_t bytes = (length < iu_png_io->count) ?
+			length : iu_png_io->count;
+		if (((iu_png_io->count) <= 0) && (length > 0))
+			png_error (png_ptr, "read buffer empty");
+		memcpy (data, iu_png_io->bufp, bytes);
+		iu_png_io->bufp += bytes;
+		iu_png_io->count -= bytes;
+	}
+}
+
+image_s *
+image_new_from_png(const char *path, int is_file, const uint8_t *buf, int size, int scale, int rotate, int *alpha)
+{
+	image_s *vimage = NULL;
+	FILE  *file = NULL;
+	struct _iu_png_io_struct iu_png_io;
+	int x, y, w, h, maxbuf, ofs, srcx, rx, ry;
+
+	png_bytepp row_pointers;
+	png_bytep ptr;
+	png_uint_32 width, height;
+	int bit_depth, color_type, interlace_type, compression_type, filter_method;
+
+	png_structp png_ptr;
+	png_infop info_ptr, end_ptr;
+
+	/* sanity check */
+	if (scale <= 0)
+		scale = 1;
+
+	if( is_file )
+	{
+		if( (file = fopen(path, "rb")) == NULL )
+		{
+			return NULL;
+		}
+		iu_png_io.fp = file;
+		iu_png_io.buf = NULL;
+		iu_png_io.count = 0;
+	}
+	else
+	{
+		iu_png_io.fp = NULL;
+		iu_png_io.buf = iu_png_io.bufp = buf;
+		iu_png_io.count = size;
+	}
+
+
+	png_ptr = png_create_read_struct (PNG_LIBPNG_VER_STRING, NULL,NULL,NULL);
+	if (!png_ptr)
+	{
+		if (is_file)
+			fclose (file);
+		return NULL;
+	}
+
+	info_ptr = png_create_info_struct (png_ptr);
+	if (!info_ptr)
+	{
+		png_destroy_read_struct (&png_ptr, (png_infopp)NULL, (png_infopp)NULL);
+		if (is_file)
+			fclose (file);
+		return NULL;
+	}
+	end_ptr = png_create_info_struct (png_ptr);
+	if (!end_ptr)
+	{
+		png_destroy_read_struct (&png_ptr, &info_ptr, (png_infopp)NULL);
+		if (is_file)
+			fclose (file);
+		return NULL;
+	}
+
+	if (setjmp (png_jmpbuf (png_ptr)))
+	{
+		png_destroy_read_struct(&png_ptr, &info_ptr, &end_ptr);
+		if (is_file)
+			fclose (file);
+		if (vimage)
+			image_free (vimage);
+		return NULL;
+	}
+
+	png_set_read_fn (png_ptr, &iu_png_io, _png_read_data);
+
+	png_read_png (png_ptr, info_ptr,
+			PNG_TRANSFORM_STRIP_16|
+			PNG_TRANSFORM_PACKING|PNG_TRANSFORM_EXPAND,
+			NULL);
+
+	//png_read_update_info (png_ptr, info_ptr);
+	png_get_IHDR(png_ptr, info_ptr, &width, &height,
+			&bit_depth, &color_type, &interlace_type,
+			&compression_type, &filter_method);
+
+	DPRINTF (E_MAXDEBUG, L_METADATA,
+			"Read %s (%dx%dx%d)\n", path, (int)width, (int)height, (int)bit_depth);
+
+	row_pointers = png_get_rows (png_ptr, info_ptr);
+
+	if (alpha)
+		*alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0;
+
+	/* The use of "scale" doesn't make such a big difference, but it does
+	 * speed up the eventual resize and makes this memory pig a little
+	 * lighter */
+	w = width/scale + (width % scale ? 1 : 0);
+	h = height/scale + (height % scale ? 1 : 0);
+
+	vimage = (rotate & (ROTATE_90|ROTATE_270)) ?
+	    image_new(h, w) : image_new(w, h);
+
+	if(!vimage)
+	{
+		png_destroy_read_struct(&png_ptr, &info_ptr, &end_ptr);
+		if( is_file )
+			fclose(file);
+		return NULL;
+	}
+
+	maxbuf = vimage->width * vimage->height;
+
+	for (y = 0; y < h; y++)
+	{
+		ry = (rotate & (ROTATE_90|ROTATE_180)) ? (y - h + 1) * -1 : y;
+		ptr = row_pointers[y*scale];
+
+		for (x = 0; x < w; x ++)
+		{
+			srcx = x*scale;
+			rx = (rotate & (ROTATE_180|ROTATE_270)) ? (x - w + 1) * -1 : x;
+			ofs = (rotate & (ROTATE_90|ROTATE_270)) ?
+				ry + (rx * h) : rx + (ry * w);
+
+			if (ofs >= maxbuf)
+				continue;
+
+			if (color_type == PNG_COLOR_TYPE_RGBA)
+			{
+				srcx *= 4;
+				vimage->buf[ofs] =
+					COL_FULL (ptr[srcx], ptr[srcx+1], ptr[srcx+2], ptr[srcx+3]);
+			}
+			else if (color_type == PNG_COLOR_TYPE_RGB)
+			{
+				srcx *= 3;
+				vimage->buf[ofs] =
+					COL (ptr[srcx], ptr[srcx+1], ptr[srcx+2]);
+			}
+			else if (color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+			{
+				srcx *= 2;
+				vimage->buf[ofs] =
+					COL_FULL (ptr[srcx], ptr[srcx], ptr[srcx], ptr[srcx+1]);
+			}
+			else if (color_type == PNG_COLOR_TYPE_GRAY)
+			{
+				vimage->buf[ofs] = COL (ptr[srcx], ptr[srcx], ptr[srcx]);
+			}
+			else
+			{
+				DPRINTF (E_MAXDEBUG, L_METADATA,
+						"%s: Unexpected color type encountered\n", path);
+				image_free (vimage);
+				vimage = NULL;
+				break;
+			}
+		}
+	}
+
+	png_destroy_read_struct(&png_ptr, &info_ptr, &end_ptr);
+	if( is_file )
+		fclose(file);
+	return vimage;
+}
+
+static void
+_png_write_data (png_structp png_ptr, png_bytep data, png_size_t length)
+{
+	struct _iu_png_io_struct *iu_png_io = png_get_io_ptr (png_ptr);
+	if (iu_png_io->fp)
+	{
+		if ((fwrite (data, 1, length, iu_png_io->fp)) < length)
+			png_error (png_ptr, "file write error");
+	}
+	else
+	{
+		png_bytep scratch;
+		scratch = realloc (iu_png_io->buf, iu_png_io->count+length);
+		if (!scratch)
+			png_error (png_ptr, "memory allocation error");
+		iu_png_io->buf = scratch;
+		memcpy (iu_png_io->buf + iu_png_io->count, data, length);
+		iu_png_io->count += length;
+	}
+}
+
+static void
+_png_flush_data (png_structp png_ptr)
+{
+	struct _iu_png_io_struct *iu_png_io = png_get_io_ptr (png_ptr);
+	if (iu_png_io->fp)
+	{
+		if ((fflush (iu_png_io->fp)) == EOF)
+			png_error (png_ptr, "flush error");
+	}
+}
+
+size_t
+image_save_to_png (const image_s *img, char *path,
+		uint8_t **buf, int alpha, int compression)
+{
+	int is_file = (path != (char *)NULL);
+	FILE *file = NULL;
+	uint32_t *ibp;
+	png_bytep p, png_imgbuf;
+	struct _iu_png_io_struct iu_png_io;
+	png_structp png_ptr;
+	png_infop info_ptr;
+	png_bytepp row_pointers;
+
+	int x,y;
+
+	png_ptr = png_create_write_struct (PNG_LIBPNG_VER_STRING,
+			NULL, NULL, NULL);
+
+	if (!png_ptr)
+		return -1;
+
+	info_ptr = png_create_info_struct (png_ptr);
+	if (!info_ptr)
+	{
+		png_destroy_write_struct (&png_ptr, (png_infopp)NULL);
+		return -1;
+	}
+
+	if (is_file)
+	{
+		file = fopen (path, "wb");
+		if (file == (FILE *)NULL)
+		{
+			png_destroy_write_struct (&png_ptr, &info_ptr);
+			return -1;
+		}
+		iu_png_io.fp = file;
+	}
+	else
+	{
+		iu_png_io.fp = NULL;
+		iu_png_io.buf = NULL;
+		iu_png_io.count = 0;
+	}
+
+	if (setjmp (png_jmpbuf (png_ptr)))
+	{
+		png_destroy_write_struct (&png_ptr, &info_ptr);
+		if (is_file)
+			fclose (file);
+		return -1;
+	}
+
+	png_set_filter (png_ptr, 0, PNG_FILTER_NONE);
+	png_set_IHDR (png_ptr, info_ptr, img->width, img->height, 8,
+			alpha ? PNG_COLOR_TYPE_RGBA : PNG_COLOR_TYPE_RGB,
+			PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
+			PNG_FILTER_TYPE_DEFAULT);
+
+	if ((compression >= 0) && (compression <= 9))
+	    png_set_compression_level (png_ptr, compression);
+
+	row_pointers = malloc (img->height * sizeof (png_bytep));
+	png_imgbuf = malloc (img->height * img->width * (alpha ? 4:3));
+
+	p = png_imgbuf;
+	ibp = img->buf;
+
+	for (y = 0; y < img->height; y++)
+	{
+		row_pointers[y] = p;
+		for (x = 0; x < img->width; x++)
+		{
+			*(p++) = (*ibp >> 24) & 0xff;
+			*(p++) = (*ibp >> 16) & 0xff;
+			*(p++) = (*ibp >> 8) & 0xff;
+			if (alpha)
+				*(p++) = *ibp & 0xff;
+			++ibp;
+		}
+	}
+
+	png_set_rows (png_ptr, info_ptr, row_pointers);
+
+	png_set_write_fn (png_ptr,
+			&iu_png_io,
+			_png_write_data, _png_flush_data);
+
+	png_write_png (png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+	if (is_file)
+	{
+		fclose (file);
+		return 0;
+	}
+
+	*buf = iu_png_io.buf;
+	return iu_png_io.count;
+}
+
+
+#endif	/* HAVE_LIBPNG */
+
+#define DECOMPOSE_RGB(c, r,g,b) { \
+	r = (double)(((c) >> 16) & 0xff) / 255.0; \
+	g = (double)(((c) >> 8) & 0xff) / 255.0; \
+	b = (double)((c) & 0xff) / 255.0; \
+}
+
+#define EXCH_RGB(r1,g1,b1, r2,g2,b2) { \
+	double rscratch = r1, \
+		   gscratch = g1, \
+		   bscratch = b1; \
+	r1 = r2; g1 = g2; b1 = b2; \
+	r2 = rscratch; g2 = gscratch; b2 = bscratch; \
+}
+
+void
+image_bgcolor_composite (image_s *img, int32_t bgcolor1, int32_t bgcolor2)
+{
+	int j,k;
+	uint32_t *p = img->buf;
+
+	double r,g,b,a, rbg,gbg,bbg,
+		   rbgl,gbgl,bbgl, rbgd,gbgd,bbgd,
+		   rbg2,gbg2,bbg2;
+
+	int checkerboard = bgcolor2 >= 0;
+
+	DECOMPOSE_RGB (bgcolor1, rbg,gbg,bbg)
+
+	if (checkerboard)
+	{
+		DECOMPOSE_RGB (bgcolor2, rbgl,gbgl,bbgl)
+
+		rbgd = rbg;
+		gbgd = gbg;
+		bbgd = bbg;
+	}
+
+	for (j = 0; j < img->height; j++)
+	{
+		if (checkerboard)
+		{
+			rbg = rbgl;
+			gbg = gbgl;
+			bbg = bbgl;
+			rbg2 = rbgd;
+			gbg2 = gbgd;
+			bbg2 = bbgd;
+			if (j & 8)
+				EXCH_RGB (rbg,gbg,bbg, rbg2,gbg2,bbg2)
+		}
+		for (k = 0; k < img->width; k++)
+		{
+			uint8_t br,bg,bb;
+			r = (double)(*p >> 24) / 255.0;
+			g = (double)((*p >> 16) & 0xff) / 255.0;
+			b = (double)((*p >> 8) & 0xff) / 255.0;
+			a = (double)(*p & 0xff) / 255.0;
+
+			if (checkerboard && !(k & 7))
+				EXCH_RGB (rbg,gbg,bbg, rbg2,gbg2,bbg2)
+
+			br = (r * a + rbg*(1 - a)) * 255;
+			bg = (g * a + gbg*(1 - a)) * 255;
+			bb = (b * a + bbg*(1 - a)) * 255;
+
+			*(p++) = COL (br,bg,bb);
+		}
+	}
 }
 
 void

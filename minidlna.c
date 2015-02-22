@@ -94,6 +94,8 @@
 #include "log.h"
 #include "tivo_beacon.h"
 #include "tivo_utils.h"
+#include "icons.h"
+#include "image_utils.h"
 
 #if SQLITE_VERSION_NUMBER < 3005001
 # warning "Your SQLite3 library appears to be too old!  Please use 3.5.1 or newer."
@@ -277,6 +279,127 @@ getfriendlyname(char *buf, int len)
 	snprintf(buf+off, len-off, "%s", logname?logname:"Unknown");
 #endif
 }
+
+#define DESTROY_ICON(s,i) \
+	if (s->dynamic[i]) free (s->icon[i])
+
+static void
+destroy_icons (struct icon_struct *s)
+{
+	int j;
+	for (j = ICON_FIRST; j <= ICON_LAST; j++)
+		DESTROY_ICON (s,j);
+}
+
+#ifdef HAVE_LIBPNG
+static int
+xround (double n)
+{
+	int i = n;
+	n -= i;
+	if ((n > 0.5) || ((n == 0.5) && (i & 0x1)))
+		++i;
+	return i;
+}
+
+static void
+set_user_icon_from_png (char *path, uint32_t bgcolor)
+{
+	int j, alpha;
+	image_s *img = image_new_from_png (path, 1, NULL, 0, 1, 0, &alpha);
+	image_s *img_sm, *img_lrg;
+	struct icon_struct newicons;
+	double n, scale_lrg, scale_sm;
+
+	if (img == (image_s *)NULL)
+	{
+		DPRINTF (E_WARN, L_GENERAL,
+				"Unable to load icon file \"%s\".\n", path);
+		return;
+	}
+
+	n = (img->height > img->width) ? img->height : img->width;
+	scale_lrg = 120.0 / n;
+	scale_sm = 48.0 / n;
+
+	if ((img_lrg = image_resize (img,
+					xround (img->width*scale_lrg),
+					xround(img->height*scale_lrg))) == (image_s *)NULL)
+	{
+		DPRINTF (E_ERROR, L_GENERAL,
+				"Failed to rescale large icon image (%s).\n", path);
+		image_free (img);
+		return;
+	}
+
+	if ((img_sm = image_resize (img,
+					xround(img->width*scale_sm),
+					xround(img->height*scale_sm))) == (image_s *)NULL)
+	{
+		DPRINTF (E_ERROR, L_GENERAL,
+				"Failed to rescale small icon image (%s).\n", path);
+		image_free (img);
+		image_free (img_lrg);
+		return;
+	}
+
+	image_free (img);
+
+	for (j = ICON_FIRST; j <= ICON_LAST; j++)
+		newicons.dynamic[j] = 1;
+
+	if ((newicons.size[ICON_PNG_LRG] = image_save_to_png (img_lrg, NULL,
+			&newicons.icon[ICON_PNG_LRG], alpha, 9)) < 0)
+	{
+		DPRINTF (E_ERROR, L_GENERAL,
+				"Failed to create large PNG icon (%s).\n", path);
+		newicons.icon[ICON_PNG_LRG] = icons.icon[ICON_PNG_LRG];
+		newicons.size[ICON_PNG_LRG] = icons.size[ICON_PNG_LRG];
+		newicons.dynamic[ICON_PNG_LRG] = icons.dynamic[ICON_PNG_LRG];
+	}
+
+	if ((newicons.size[ICON_PNG_SM] = image_save_to_png (img_sm, NULL,
+			&newicons.icon[ICON_PNG_SM], alpha, 9)) < 0)
+	{
+		DPRINTF (E_ERROR, L_GENERAL,
+				"Failed to create small PNG icon (%s).\n", path);
+		newicons.icon[ICON_PNG_SM] = icons.icon[ICON_PNG_SM];
+		newicons.size[ICON_PNG_SM] = icons.size[ICON_PNG_SM];
+		newicons.dynamic[ICON_PNG_SM] = icons.dynamic[ICON_PNG_SM];
+	}
+
+	if (alpha)
+	{
+		image_bgcolor_composite (img_lrg, bgcolor, -1);
+		image_bgcolor_composite (img_sm, bgcolor, -1);
+	}
+
+	if (!(newicons.icon[ICON_JPEG_LRG] = image_save_to_jpeg_buf (img_lrg,
+			&newicons.size[ICON_JPEG_LRG])))
+	{
+		DPRINTF (E_ERROR, L_GENERAL,
+				"Failed to create large JPEG icon (%s).\n", path);
+		newicons.icon[ICON_JPEG_LRG] = icons.icon[ICON_JPEG_LRG];
+		newicons.size[ICON_JPEG_LRG] = icons.size[ICON_JPEG_LRG];
+		newicons.dynamic[ICON_JPEG_LRG] = icons.dynamic[ICON_JPEG_LRG];
+	}
+
+	if (!(newicons.icon[ICON_JPEG_SM] = image_save_to_jpeg_buf (img_sm,
+			&newicons.size[ICON_JPEG_SM])))
+	{
+		DPRINTF (E_ERROR, L_GENERAL,
+				"Failed to create small JPEG icon (%s).\n", path);
+		newicons.icon[ICON_JPEG_SM] = icons.icon[ICON_JPEG_SM];
+		newicons.size[ICON_JPEG_SM] = icons.size[ICON_JPEG_SM];
+		newicons.dynamic[ICON_JPEG_SM] = icons.dynamic[ICON_JPEG_SM];
+	}
+
+	image_free (img_sm);
+	image_free (img_lrg);
+	destroy_icons (&icons);
+	icons = newicons;
+}
+#endif	/* HAVE_LIBPNG */
 
 static int
 open_db(sqlite3 **sq3)
@@ -734,6 +857,34 @@ init(int argc, char **argv)
 			if (strtobool(ary_options[i].value))
 				SETFLAG(MERGE_MEDIA_DIRS_MASK);
 			break;
+#ifdef HAVE_LIBPNG
+		case ICON:
+			{
+				char *path = strtok (ary_options[i].value, ",");
+				char *bgcolor_s = strtok (NULL, ",");
+				uint32_t bgcolor = 0x7f7f7f;
+
+				if (bgcolor_s)
+				{
+					if (image_color_from_hex (bgcolor_s, &bgcolor))
+						bgcolor = 0x7f7f7f;
+					else
+						/* lose the alpha */
+						bgcolor >>= 8;
+				}
+
+				set_user_icon_from_png (path, bgcolor);
+			}
+			break;
+		case BGCOLOR:
+			{
+				char *bgcolor1_s = strtok (ary_options[i].value, ",");
+				char *bgcolor2_s = strtok (NULL, ",");
+
+				image_set_png_bgcolor (bgcolor1_s, bgcolor2_s);
+			}
+			break;
+#endif
 		default:
 			DPRINTF(E_ERROR, L_GENERAL, "Unknown option in file %s\n",
 				optionsfile);

@@ -37,6 +37,9 @@
 #include <FLAC/metadata.h>
 
 #include "config.h"
+#ifdef HAVE_OPUS
+#include <opusfile.h>
+#endif
 #ifdef HAVE_ICONV
 #include <iconv.h>
 #endif
@@ -45,6 +48,7 @@
 #include "../metadata.h"
 #include "../utils.h"
 #include "../log.h"
+#include "../image_utils.h"
 
 struct id3header {
 	unsigned char id[3];
@@ -103,6 +107,9 @@ char *winamp_genre[] = {
 #include "tagutils-mp3.h"
 #include "tagutils-aac.h"
 #include "tagutils-ogg.h"
+#ifdef HAVE_OPUS
+#include "tagutils-opus.h"
+#endif
 #include "tagutils-flc.h"
 #include "tagutils-asf.h"
 #include "tagutils-wav.h"
@@ -127,6 +134,9 @@ static taghandler taghandlers[] = {
 	{ "mp3", _get_mp3tags, _get_mp3fileinfo                                  },
 	{ "flc", _get_flctags, _get_flcfileinfo                                  },
 	{ "ogg", 0,            _get_oggfileinfo                                  },
+#ifdef HAVE_OPUS
+	{ "ops", 0,				_get_opusfileinfo								 },
+#endif
 	{ "asf", 0,            _get_asffileinfo                                  },
 	{ "wav", _get_wavtags, _get_wavfileinfo                                  },
 	{ "pcm", 0,            _get_pcmfileinfo                                  },
@@ -140,6 +150,9 @@ static taghandler taghandlers[] = {
 #include "tagutils-mp3.c"
 #include "tagutils-aac.c"
 #include "tagutils-ogg.c"
+#ifdef HAVE_OPUS
+#include "tagutils-opus.c"
+#endif
 #include "tagutils-flc.c"
 #include "tagutils-asf.c"
 #include "tagutils-wav.c"

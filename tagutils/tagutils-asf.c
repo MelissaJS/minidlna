@@ -470,7 +470,12 @@ _asf_load_picture(FILE *fp, int size, void *bm, int *bm_size)
 
 	if(!strcasecmp(buf, "image/jpeg") ||
 	   !strcasecmp(buf, "image/jpg") ||
-	   !strcasecmp(buf, "image/peg"))
+	   !strcasecmp(buf, "image/peg")
+#if HAVE_LIBPNG
+	   /* XXX Does this work?  Damned if I know. */
+	   || !strcasecmp(buf, "image/png")
+#endif
+	)
 	{
 
 		while(0 != fget_le16(fp))

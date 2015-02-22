@@ -327,8 +327,15 @@ mime_to_ext(const char * mime)
 				return "pcm";
 			else if( strcmp(mime+6, "3gpp") == 0 )
 				return "3gp";
-			else if( strcmp(mime, "application/ogg") == 0 )
-				return "ogg";
+			else if( strncmp(mime+6, "ogg", 3) == 0 )
+			{
+				if( strstr(mime+9, "opus" ) != (char *)NULL )
+					return "opus";
+				else if( strstr (mime+9, "vorbis" ) != (char *)NULL )
+					return "ogg";
+
+				return "oga";
+			}
 			break;
 		case 'v':
 			if( strcmp(mime+6, "avi") == 0 )
@@ -357,6 +364,8 @@ mime_to_ext(const char * mime)
 				return "3gp";
 			else if( strncmp(mime+6, "x-tivo-mpeg", 11) == 0 )
 				return "TiVo";
+			else if ( strcmp(mime+6, "ogg") == 0 )
+				return "ogv";
 			break;
 		case 'i':
 			if( strcmp(mime+6, "jpeg") == 0 )
@@ -381,6 +390,7 @@ is_video(const char * file)
 		ends_with(file, ".m2t") || ends_with(file, ".mkv")   ||
 		ends_with(file, ".vob") || ends_with(file, ".ts")    ||
 		ends_with(file, ".flv") || ends_with(file, ".xvid")  ||
+		ends_with(file, ".ogv") ||
 #ifdef TIVO_SUPPORT
 		ends_with(file, ".TiVo") ||
 #endif
@@ -396,13 +406,18 @@ is_audio(const char * file)
 		ends_with(file, ".m4a") || ends_with(file, ".aac")  ||
 		ends_with(file, ".mp4") || ends_with(file, ".m4p")  ||
 		ends_with(file, ".wav") || ends_with(file, ".ogg")  ||
+		ends_with(file, ".oga") ||
+#ifdef HAVE_OPUS
+		ends_with(file, ".opus") ||
+#endif
 		ends_with(file, ".pcm") || ends_with(file, ".3gp"));
 }
 
 int
 is_image(const char * file)
 {
-	return (ends_with(file, ".jpg") || ends_with(file, ".jpeg"));
+	return (ends_with(file, ".jpg") || ends_with(file, ".jpeg") ||
+		ends_with(file, ".png"));
 }
 
 int

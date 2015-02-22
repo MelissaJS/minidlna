@@ -39,19 +39,30 @@
 #include "image_utils.h"
 #include "log.h"
 
+#if HAVE_LIBPNG
+#define ALPHA ,alpha
+#else
+#define ALPHA
+#endif
+
 static int
 art_cache_exists(const char *orig_path, char **cache_file)
 {
-	if( xasprintf(cache_file, "%s/art_cache%s", db_path, orig_path) < 0 )
+	*cache_file = malloc (strlen (db_path) + strlen (orig_path) + 14);
+	if (*cache_file == (char *)NULL)
 		return 0;
 
-	strcpy(strchr(*cache_file, '\0')-4, ".jpg");
+	sprintf (*cache_file, "%s/art_cache%s.jpg", db_path, orig_path);
 
 	return (!access(*cache_file, F_OK));
 }
 
 static char *
+#if HAVE_LIBPNG
+save_resized_album_art(image_s *imsrc, const char *path, int alpha)
+#else
 save_resized_album_art(image_s *imsrc, const char *path)
+#endif
 {
 	int dstw, dsth;
 	image_s *imdst;
@@ -83,6 +94,11 @@ save_resized_album_art(image_s *imsrc, const char *path)
 		free(cache_file);
 		return NULL;
 	}
+
+#if HAVE_LIBPNG
+	if (alpha)
+		image_png_composite (imdst);
+#endif
 
 	cache_file = image_save_to_jpeg_file(imdst, cache_file);
 	image_free(imdst);
@@ -170,6 +186,7 @@ check_embedded_art(const char *path, uint8_t *image_data, int image_size)
 	static unsigned int last_hash = 0;
 	static int last_success = 0;
 	unsigned int hash;
+	int alpha = 0;
 
 	if( !image_data || !image_size || !path )
 	{
@@ -204,6 +221,15 @@ check_embedded_art(const char *path, uint8_t *image_data, int image_size)
 	}
 	last_hash = hash;
 
+#if HAVE_LIBPNG
+			if ((image_size >= 8) &&
+					(!memcmp (image_data, PNG_ID, PNG_ID_LEN)))
+			{
+				imsrc = image_new_from_png (NULL, 0, image_data, image_size, 1,
+						ROTATE_NONE, &alpha);
+			}
+			else
+#endif
 	imsrc = image_new_from_jpeg(NULL, 0, image_data, image_size, 1, ROTATE_NONE);
 	if( !imsrc )
 	{
@@ -215,7 +241,7 @@ check_embedded_art(const char *path, uint8_t *image_data, int image_size)
 
 	if( width > 160 || height > 160 )
 	{
-		art_path = save_resized_album_art(imsrc, path);
+		art_path = save_resized_album_art(imsrc, path ALPHA);
 	}
 	else if( width > 0 && height > 0 )
 	{
@@ -271,6 +297,9 @@ check_for_album_file(const char *path)
 	const char *dir;
 	struct stat st;
 	int ret;
+#if HAVE_LIBPNG
+	int alpha = 0;
+#endif
 
 	if( stat(path, &st) != 0 )
 		return NULL;
@@ -328,14 +357,24 @@ existing_file:
 				return art_file;
 			}
 			free(art_file);
+#if HAVE_LIBPNG
+			if (ends_with (file, ".png"))
+			{
+				imsrc = image_new_from_png (file, 1, NULL, 0, 1, ROTATE_NONE,
+						&alpha);
+			}
+			else
+				imsrc = image_new_from_jpeg(file, 1, NULL, 0, 1, ROTATE_NONE);
+#else
 			imsrc = image_new_from_jpeg(file, 1, NULL, 0, 1, ROTATE_NONE);
+#endif
 			if( !imsrc )
 				continue;
 found_file:
 			width = imsrc->width;
 			height = imsrc->height;
 			if( width > 160 || height > 160 )
-				art_file = save_resized_album_art(imsrc, file);
+				art_file = save_resized_album_art(imsrc, file ALPHA);
 			else
 				art_file = strdup(file);
 			image_free(imsrc);

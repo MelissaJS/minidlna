@@ -405,6 +405,11 @@ done
 test x"$ac_cv_lib_jpeg_jpeg_set_defaults" = x"yes" || AC_MSG_ERROR([Could not find libexif])
 AC_SUBST(LIBEXIF_LIBS)
 
+PKG_CHECK_MODULES([libpng], [libpng],
+		  AM_CONDITIONAL(HAVE_LIBPNG, true)
+		  AC_DEFINE(HAVE_LIBPNG,1,[Define to 1 if you have libpng]),
+		  AM_CONDITIONAL(HAVE_LIBPNG, false))
+
 LDFLAGS_SAVE="$LDFLAGS"
 for dir in "" /usr/local $SEARCH_DIR; do
     if test -n "$dir"; then
@@ -477,6 +482,13 @@ AC_CHECK_LIB(vorbisfile, vorbis_comment_query,
         AM_CONDITIONAL(NEED_VORBIS, false),
         AM_CONDITIONAL(NEED_VORBIS, true),
         -logg)
+
+#test if we have opusfile
+
+PKG_CHECK_MODULES([opus], [opusfile],
+	AM_CONDITIONAL(HAVE_OPUS, true)
+	AC_DEFINE(HAVE_OPUS,1,[Define to 1 if you have opusfile]),
+	AM_CONDITIONAL(HAVE_OPUS, false))
 
 ################################################################################################################
 ### Header checks

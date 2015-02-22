@@ -15,13 +15,14 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
 # USA.
 
-AM_CFLAGS = -Wall -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 @STATIC_CFLAGS@
+AM_CFLAGS = -Wall -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 @STATIC_CFLAGS@ \
+	    @libpng_CFLAGS@ @opus_CFLAGS@
 
 SUBDIRS=po
 
 sbin_PROGRAMS = minidlnad
 check_PROGRAMS = testupnpdescgen
-minidlnad_SOURCES = minidlna.c upnphttp.c upnpdescgen.c upnpsoap.c \
+minidlnad_SOURCES = minidlna.c icons.c upnphttp.c upnpdescgen.c upnpsoap.c \
 			upnpreplyparse.c minixml.c clients.c \
 			getifaddr.c process.c upnpglobalvars.c \
 			options.c minissdp.c uuid.c upnpevents.c \
@@ -40,6 +41,7 @@ flacoggflag = -logg
 
 minidlnad_LDADD = \
 	@LIBJPEG_LIBS@ \
+	@libpng_LIBS@ \
 	@LIBID3TAG_LIBS@ \
 	@LIBSQLITE3_LIBS@ \
 	@LIBAVFORMAT_LIBS@ \
@@ -47,7 +49,8 @@ minidlnad_LDADD = \
 	@LIBEXIF_LIBS@ \
 	@LIBINTL@ \
 	@LIBICONV@ \
-	-lFLAC  $(flacoggflag) $(vorbisflag)
+	-lFLAC  $(flacoggflag) $(vorbisflag) \
+	@opus_LIBS@
 
 minidlnad_LDFLAGS = @STATIC_LDFLAGS@
 

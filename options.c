@@ -65,6 +65,10 @@ static const struct {
 	{ FORCE_SORT_CRITERIA, "force_sort_criteria" },
 	{ MAX_CONNECTIONS, "max_connections" },
 	{ MERGE_MEDIA_DIRS, "merge_media_dirs" }
+#ifdef HAVE_LIBPNG
+	,{ ICON, "icon" },
+	{ BGCOLOR, "bgcolor" }
+#endif
 };
 
 int

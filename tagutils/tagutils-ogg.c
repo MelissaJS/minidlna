@@ -429,7 +429,9 @@ _get_oggfileinfo(char *filename, struct song_metadata *psong)
 
 	if(!file)
 	{
-		DPRINTF(E_FATAL, L_SCANNER,
+		/* E_FATAL causes an exit(). */
+		/* DPRINTF(E_FATAL, L_SCANNER, */
+		DPRINTF(E_WARN, L_SCANNER,
 			"Error opening input file \"%s\": %s\n", filename,  strerror(errno));
 		_ogg_free_stream_set(processors);
 		return -1;

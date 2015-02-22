@@ -58,6 +58,10 @@ enum upnpconfigoptions {
 	FORCE_SORT_CRITERIA,		/* force sorting by a given sort criteria */
 	MAX_CONNECTIONS,		/* maximum number of simultaneous connections */
 	MERGE_MEDIA_DIRS		/* don't add an extra directory level when there are multiple media dirs */
+#ifdef HAVE_LIBPNG
+	,ICON,					/* user-supplied PNG icon */
+	BGCOLOR					/* user-supplied BG color */
+#endif
 };
 
 /* readoptionsfile()

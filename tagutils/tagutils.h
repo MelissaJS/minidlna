@@ -54,6 +54,7 @@ struct song_metadata {
 
 	uint8_t *image;                         // coverart
 	int image_size;
+	int image_type;				// APIC picture type
 
 	char *title;                            // TIT2
 	char *album;                            // TALB
