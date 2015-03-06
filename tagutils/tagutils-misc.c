@@ -180,17 +180,29 @@ _get_utf8_text(const id3_ucs4_t* native_text)
 	return utf8_text;
 }
 
+static void
+_log_base64_overflow (void)
+{
+	DPRINTF(E_WARN, L_SCANNER,
+			"decode_base64(): outbuf buffer overflow.");
+}
+
 static size_t
 decode_base64 (const char *buf, size_t length, uint8_t **obuf)
 {
     int bytesread = 0, c;
 	size_t obytes = 0;
+	size_t decoded_length = length*3/4 + 1;
     uint8_t bytes[4], *optr;
     const char *iptr = buf, *p;
-	char alphabet[65] =
+	char *alphabet =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	int alphabet_length = strlen (alphabet);
 
-	if ((optr = *obuf = malloc (strlen (buf)*3/4 + 1)) == (uint8_t *)NULL)
+	if (!decoded_length)
+		return -1;
+
+	if ((optr = *obuf = malloc (decoded_length)) == (uint8_t *)NULL)
 		return -1;
 
 	iptr = buf;
@@ -210,7 +222,7 @@ decode_base64 (const char *buf, size_t length, uint8_t **obuf)
 			break;
 		}
 
-        if ((p = strchr(alphabet,c)) != (char *)NULL)
+        if ((p = memchr(alphabet,c, alphabet_length)) != (char *)NULL)
 			bytes[bytesread++] = p - alphabet;
 		else
 		{
@@ -222,11 +234,17 @@ decode_base64 (const char *buf, size_t length, uint8_t **obuf)
 
         if (bytesread >= 4)
         {
+			obytes += 3;
+			if (obytes > decoded_length)
+			{
+				_log_base64_overflow ();
+				free (*obuf);
+				return -1;
+			}
 			*optr++ = (bytes[0] << 2) | (bytes[1] >> 4);
             *optr++ = (bytes[1] << 4) | (bytes[2] >> 2);
             *optr++ = (bytes[2] << 6) | bytes[3];
             bytesread = 0;
-			obytes += 3;
         }
     }
 
@@ -235,14 +253,26 @@ decode_base64 (const char *buf, size_t length, uint8_t **obuf)
         switch (bytesread)
         {
             case 2:
-				*optr++ = (bytes[0] << 2) | (bytes[1] >> 4);
 				++obytes;
+				if (obytes > decoded_length)
+				{
+					_log_base64_overflow ();
+					free (*obuf);
+					return -1;
+				}
+				*optr++ = (bytes[0] << 2) | (bytes[1] >> 4);
                 break;
 
             case 3:
+				obytes += 2;
+				if (obytes > decoded_length)
+				{
+					_log_base64_overflow ();
+					free (*obuf);
+					return -1;
+				}
 				 *optr++ = (bytes[0] << 2) | (bytes[1] >> 4);
                  *optr++ = (bytes[1] << 4) | (bytes[2] >> 2);
-				 obytes += 2;
                  break;
         }
     }
@@ -277,8 +307,9 @@ static void
 vc_image (struct song_metadata *psong, const char *buf, const size_t length)
 {
 	uint8_t *block, *blockend, *p;
-	int image_size, image_type;
+	int image_size, image_type, mimelen;
 	size_t block_size;
+	char *mimestr;
 
 	/* If there's already a front cover keep it. */
 	if ((psong->image != (uint8_t *)NULL) && (psong->image_type == 3))
@@ -301,9 +332,22 @@ vc_image (struct song_metadata *psong, const char *buf, const size_t length)
 	p += 4;
 
 	/* skip the MIME string */
-	p += BE32 (p) + 4;
+	mimelen = BE32 (p);
+	p += 4;
+	mimestr = (char *)p;
+	p += mimelen;
 	if (p > blockend - 4)
 	{
+		free (block);
+		return;
+	}
+
+	/* URL? */
+	if (!strncmp (mimestr, "-->", mimelen))
+	{
+		/* yeah...we don't do that */
+		DPRINTF (E_WARN, L_SCANNER,
+				"Vorbis album art URLs not supported.\n");
 		free (block);
 		return;
 	}

@@ -754,7 +754,9 @@ image_new_from_png(const char *path, int is_file, const uint8_t *buf, int size, 
 			&compression_type, &filter_method);
 
 	DPRINTF (E_MAXDEBUG, L_METADATA,
-			"Read %s (%dx%dx%d)\n", path, (int)width, (int)height, (int)bit_depth);
+			"Read %s (%dx%dx%d)\n",
+			is_file ? path : "(memory)",
+			(int)width, (int)height, (int)bit_depth);
 
 	row_pointers = png_get_rows (png_ptr, info_ptr);
 
