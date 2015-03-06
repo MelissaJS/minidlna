@@ -48,7 +48,7 @@
 static int
 art_cache_exists(const char *orig_path, char **cache_file)
 {
-	*cache_file = malloc (strlen (db_path) + strlen (orig_path) + 14);
+	*cache_file = malloc (strlen (db_path) + strlen (orig_path) + 15);
 	if (*cache_file == (char *)NULL)
 		return 0;
 
