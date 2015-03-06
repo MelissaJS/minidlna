@@ -109,8 +109,9 @@ void
 process_handle_child_termination(int signal)
 {
 	pid_t pid;
+	int status;
 
-	while ((pid = waitpid(-1, NULL, WNOHANG)))
+	while ((pid = waitpid(-1, &status, WNOHANG)))
 	{
 		if (pid == -1)
 		{
@@ -119,8 +120,29 @@ process_handle_child_termination(int signal)
 			else
 				break;
 		}
+
 		number_of_children--;
 		remove_process_info(pid);
+
+		if (WIFEXITED(status))
+		{
+			DPRINTF(E_DEBUG, L_GENERAL,
+					"Process %d exited normally with exit status %d\n",
+					(int)pid, WEXITSTATUS(status));
+		}
+		else if (WIFSIGNALED(status))
+		{
+#ifdef WCOREDUMP
+			DPRINTF(E_ERROR, L_GENERAL,
+					"Process %d terminated by signal %d.  A core dump was%sproduced.\n",
+					(int)pid, WTERMSIG(status),
+					WCOREDUMP(status) ? " " : " not ");
+#else
+			DPRINTF(E_ERROR, L_GENERAL,
+					"Process %d terminated by signal %d\n",
+					(int)pid, WTERMSIG(status));
+#endif
+		}
 	}
 }
 
