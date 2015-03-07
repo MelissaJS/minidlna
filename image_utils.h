@@ -65,7 +65,7 @@ int image_set_png_bgcolor (const char *, const char *);
 void image_png_composite (image_s *img);
 
 image_s *
-image_new_from_png(const char *path, int is_file, const uint8_t *ptr, int size, int scale, int rotate, int *alpha);
+image_new_from_png(const char *path, int is_file, uint8_t *ptr, int size, int scale, int rotate, int *alpha);
 
 size_t
 image_save_to_png (const image_s *img, char *path,

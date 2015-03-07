@@ -669,7 +669,7 @@ _png_read_data (png_structp png_ptr, png_bytep data, png_size_t length)
 }
 
 image_s *
-image_new_from_png(const char *path, int is_file, const uint8_t *buf, int size, int scale, int rotate, int *alpha)
+image_new_from_png(const char *path, int is_file, uint8_t *buf, int size, int scale, int rotate, int *alpha)
 {
 	image_s *vimage = NULL;
 	FILE  *file = NULL;
@@ -875,11 +875,11 @@ image_save_to_png (const image_s *img, char *path,
 	int is_file = (path != (char *)NULL);
 	FILE *file = NULL;
 	uint32_t *ibp;
-	png_bytep p, png_imgbuf;
+	png_bytep p, png_imgbuf = NULL;
 	struct _iu_png_io_struct iu_png_io;
 	png_structp png_ptr;
 	png_infop info_ptr;
-	png_bytepp row_pointers;
+	png_bytepp row_pointers = NULL;
 
 	int x,y;
 
@@ -918,6 +918,10 @@ image_save_to_png (const image_s *img, char *path,
 		png_destroy_write_struct (&png_ptr, &info_ptr);
 		if (is_file)
 			fclose (file);
+		if (png_imgbuf != (png_bytep)NULL)
+		    free (png_imgbuf);
+		if (row_pointers != (png_bytepp)NULL)
+		    free (row_pointers);
 		return -1;
 	}
 
@@ -957,6 +961,10 @@ image_save_to_png (const image_s *img, char *path,
 			_png_write_data, _png_flush_data);
 
 	png_write_png (png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+	png_destroy_write_struct (&png_ptr, &info_ptr);
+	free (row_pointers);
+	free (png_imgbuf);
 
 	if (is_file)
 	{

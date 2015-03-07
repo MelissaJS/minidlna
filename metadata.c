@@ -734,7 +734,7 @@ _get_png_metadata (const char *path, char *name)
 	metadata_t m;
 	memset(&m, '\0', sizeof(metadata_t));
 	uint8_t tagbuf[8];
-	uint32_t free_flags = 0xFFFFFFFF;
+	uint32_t free_flags = 0;
 
 	if ( stat(path, &statbuf) != 0 )
 		return 0;
@@ -820,13 +820,14 @@ _get_png_metadata (const char *path, char *name)
 				free_metadata(&m, free_flags);
 				return 0;
 			}
-			if (m.date)
+			if (free_flags & FLAG_DATE)
 				free (m.date);
 
 			xasprintf (&m.date, "%04d-%02d-%02dT%02d:%02d:%02d",
 					(int)(buf[0]<<8 | buf[1]),
 					(int)buf[2], (int)buf[3],
 					(int)buf[4], (int)buf[5], (int)buf[6]);
+			free_flags |= FLAG_DATE;
 			free (buf);
 			continue;
 		}
@@ -894,15 +895,17 @@ _get_png_metadata (const char *path, char *name)
 
 			if (!strcmp (keyword, "Title"))
 			{
-				if (m.title)
+				if (free_flags & FLAG_TITLE)
 					free (m.title);
 				m.title = value;
+				free_flags |= FLAG_TITLE;
 			}
 			else if (!strcmp (keyword, "Author"))
 			{
-				if (m.creator)
+				if (free_flags & FLAG_CREATOR)
 					free (m.creator);
 				m.creator = value;
+				free_flags |= FLAG_CREATOR;
 			}
 			else
 			{
@@ -940,9 +943,11 @@ textdone:
 	thumb = 0;
 	m.dlna_pn = NULL;
 	m.mime = strdup("image/png");
+	free_flags |= (FLAG_MIME | FLAG_RESOLUTION);
 
-	if (!m.title)
+	if (!(free_flags & FLAG_TITLE))
 		m.title = strdup (name);
+	free_flags |= FLAG_TITLE;
 
 	DPRINTF (E_MAXDEBUG, L_METADATA,
 			"Processed \"%s\":\n  Name: %s\n  Resolution: %s\n",
@@ -965,7 +970,7 @@ textdone:
 	{
 		ret = sqlite3_last_insert_rowid(db);
 	}
-	free_metadata(&m, FLAG_MIME | FLAG_RESOLUTION);
+	free_metadata(&m, free_flags);
 
 	return ret;
 }
