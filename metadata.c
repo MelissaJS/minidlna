@@ -732,9 +732,10 @@ _get_png_metadata (const char *path, char *name)
 	struct stat statbuf;
 	int64_t ret;
 	metadata_t m;
-	memset(&m, '\0', sizeof(metadata_t));
 	uint8_t tagbuf[8];
 	uint32_t free_flags = 0;
+
+	memset(&m, '\0', sizeof(metadata_t));
 
 	if ( stat(path, &statbuf) != 0 )
 		return 0;
