@@ -21,6 +21,8 @@
 
 /* This file is derived from mt-daapd project */
 
+#include "config.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <id3tag.h>
@@ -36,7 +38,6 @@
 #include <vorbis/codec.h>
 #include <FLAC/metadata.h>
 
-#include "config.h"
 #ifdef HAVE_OPUS
 #include <opusfile.h>
 #endif

@@ -27,6 +27,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include "config.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -40,7 +42,6 @@
 
 #include "upnpglobalvars.h"
 #include "process.h"
-#include "config.h"
 #include "log.h"
 
 struct child *children = NULL;

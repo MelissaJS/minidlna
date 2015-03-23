@@ -26,11 +26,12 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include "config.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "config.h"
 #include "upnpdescgen.h"
 
 char uuidvalue[] = "uuid:12345678-0000-0000-0000-00000000abcd";

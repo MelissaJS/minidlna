@@ -46,12 +46,13 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include "config.h"
+
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/param.h>
 #include <limits.h>
 
-#include "config.h"
 #include "upnpglobalvars.h"
 
 /* startup time */

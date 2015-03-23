@@ -46,6 +46,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include "config.h"
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -63,7 +65,6 @@
 #include <sys/resource.h>
 #include <limits.h>
 
-#include "config.h"
 #include "upnpglobalvars.h"
 #include "upnphttp.h"
 #include "upnpdescgen.h"

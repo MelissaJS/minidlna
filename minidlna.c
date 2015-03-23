@@ -46,6 +46,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include "config.h"
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -68,8 +70,6 @@
 #include <limits.h>
 #include <libgen.h>
 #include <pwd.h>
-
-#include "config.h"
 
 #ifdef ENABLE_NLS
 #include <locale.h>
